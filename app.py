@@ -34,27 +34,58 @@ def find_sequence(pool, target_seconds):
         return [first_file, second_file], "Thành công"
         
     valid_pool = [f for f in pool if f['duration_secs'] > 0]
-    sorted_pool = sorted(valid_pool, key=lambda x: x['duration_secs'], reverse=True)
     
-    queue = deque([(start_sum, second_file['name'], [first_file, second_file])])
-    visited = {start_sum: {second_file['name']}}
+    # HÀM ƯU TIÊN: Ưu tiên file 20-30 phút (1200s - 1800s), sau đó đến file dài khác, cuối cùng mới đến file ngắn
+    def sort_priority(x):
+        dur = x['duration_secs']
+        if 1200 <= dur <= 1800:
+            return (2, dur) # Ưu tiên cao nhất
+        elif dur > 60:
+            return (1, dur) # Ưu tiên trung bình
+        else:
+            return (0, dur) # Ít ưu tiên (các file ngắn)
+
+    sorted_pool = sorted(valid_pool, key=sort_priority, reverse=True)
+    
+    # Cấu trúc hàng đợi (Queue): (Tổng_hiện_tại, Tên_file_cuối, Danh_sách_file, Tổng_thời_lượng_file_ngắn)
+    # File ngắn được định nghĩa là từ 30s đến 60s
+    queue = deque([(start_sum, second_file['name'], [first_file, second_file], start_sum)])
+    
+    # Visited dict mapping (current_sum, last_file_name) -> min_short_sum (lưu lại tổng file ngắn nhỏ nhất để tối ưu)
+    visited = {(start_sum, second_file['name']): start_sum}
     
     while queue:
-        curr_sum, last_name, path = queue.popleft()
+        curr_sum, last_name, path, short_sum = queue.popleft()
+        
         for f in sorted_pool:
             if f['name'] == last_name:
                 continue
+                
             nxt_sum = curr_sum + f['duration_secs']
+            
+            # Cắt nhánh: nếu tổng vượt quá yêu cầu thì bỏ qua luôn
+            if nxt_sum > target_seconds:
+                continue
+                
+            # Kiểm tra và tính toán tổng thời lượng các file ngắn (30s - 1m)
+            is_short_file = 30 <= f['duration_secs'] <= 60
+            nxt_short_sum = short_sum + f['duration_secs'] if is_short_file else short_sum
+            
+            # RÀNG BUỘC: Tổng thời lượng các file 30s đến 1 phút phải nhỏ hơn 15 phút (900s)
+            if nxt_short_sum >= 900:
+                continue
+                
             if nxt_sum == target_seconds:
                 return path + [f], "Thành công"
+                
             if nxt_sum < target_seconds:
-                if nxt_sum not in visited:
-                    visited[nxt_sum] = set()
-                if f['name'] not in visited[nxt_sum]:
-                    visited[nxt_sum].add(f['name'])
-                    queue.append((nxt_sum, f['name'], path + [f]))
+                state_key = (nxt_sum, f['name'])
+                # Cập nhật visited nếu chưa từng tới trạng thái này hoặc tìm được cách tới với ít file ngắn hơn
+                if state_key not in visited or nxt_short_sum < visited[state_key]:
+                    visited[state_key] = nxt_short_sum
+                    queue.append((nxt_sum, f['name'], path + [f], nxt_short_sum))
                     
-    return None, "Không thể ghép chính xác thời lượng bằng các file hiện có trong kho. Hãy thử thêm các file lẻ (5s, 10s, 15s) vào file Excel mẫu!"
+    return None, "Không thể ghép chính xác thời lượng hoặc vi phạm giới hạn file quảng cáo ngắn. Hãy thử thêm file có thời lượng đa dạng hơn vào Excel mẫu!"
 
 st.set_page_config(page_title="App Lịch Chèn Sự Cố", layout="wide")
 st.title("Ứng dụng Lịch Chèn Sự Cố")
@@ -139,15 +170,15 @@ else:
         
         if st.button("7. XUẤT FILE CHÈN", type="primary"):
             target_secs = int(active_tl.total_seconds())
-            with st.spinner("Đang tính toán thuật toán AI (Đảm bảo xuất trong 1 giây)..."):
+            with st.spinner("Đang tính toán thuật toán AI (Bao gồm ưu tiên ghép các file dài 20-30 phút)..."):
                 sequence, msg = find_sequence(file_pool, target_secs)
             if sequence is None:
                 st.error(msg)
             else:
                 st.success("Tuyệt vời! Đã tìm được tổ hợp file chèn khớp 100% thời gian!")
                 sheet["B2"] = datetime.now().strftime("%d/%m/%Y")
-                sheet["A6"] = f"{timedelta_to_str(active_gio)}:00"
-                sheet["D6"] = f"{timedelta_to_str(active_tl)}:00"
+                sheet["A6"] = f"{timedelta_to_str(active_gio)}"
+                sheet["D6"] = f"{timedelta_to_str(active_tl)}"
                 sheet.delete_rows(7, sheet.max_row)
                 for i, item in enumerate(sequence):
                     row_idx = 7 + i
