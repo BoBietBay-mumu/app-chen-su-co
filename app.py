@@ -34,7 +34,6 @@ def find_sequence(pool, target_seconds):
         return [first_file, second_file], "Thành công"
         
     valid_pool = [f for f in pool if f['duration_secs'] > 0]
-    # Thuật toán thông minh: Luôn ưu tiên thử file dài nhất trước
     sorted_pool = sorted(valid_pool, key=lambda x: x['duration_secs'], reverse=True)
     
     queue = deque([(start_sum, second_file['name'], [first_file, second_file])])
@@ -147,8 +146,8 @@ else:
             else:
                 st.success("Tuyệt vời! Đã tìm được tổ hợp file chèn khớp 100% thời gian!")
                 sheet["B2"] = datetime.now().strftime("%d/%m/%Y")
-                sheet["A6"] = timedelta_to_str(active_gio)
-                sheet["D6"] = timedelta_to_str(active_tl)
+                sheet["A6"] = f"{timedelta_to_str(active_gio)}:00"
+                sheet["D6"] = f"{timedelta_to_str(active_tl)}:00"
                 sheet.delete_rows(7, sheet.max_row)
                 for i, item in enumerate(sequence):
                     row_idx = 7 + i
