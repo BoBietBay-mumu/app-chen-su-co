@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, time
 import openpyxl
 import io
 import random
-from collections import deque
+import time as time_module
 
 def str_to_timedelta(time_str):
     try:
@@ -22,71 +22,98 @@ def timedelta_to_str(td):
 def find_sequence(pool, target_seconds):
     files_30s = [f for f in pool if f['duration_secs'] == 30]
     if len(files_30s) == 0:
-        return None, "Kho dữ liệu không có file 30s nào để xếp 2 file đầu!"
+        return None, "Kho dữ liệu Excel không có file 30s nào để xếp 2 file đầu tiên!", 0
     
+    # Chọn 2 file 30s đầu tiên (Cố gắng chọn 2 file khác nhau)
     first_file = random.choice(files_30s)
-    second_file = random.choice([f for f in files_30s if f['name'] != first_file['name']] or files_30s)
+    other_30s = [f for f in files_30s if f['name'] != first_file['name']]
+    second_file = random.choice(other_30s) if other_30s else first_file
     
     start_sum = 60
-    if target_seconds < start_sum:
-        return None, f"Thời lượng yêu cầu quá ngắn ({target_seconds}s), không đủ xếp 2 file 30s đầu tiên!"
-    if target_seconds == start_sum:
-        return [first_file, second_file], "Thành công"
+    if target_seconds < start_sum - 20:
+        return None, f"Thời lượng yêu cầu quá ngắn, không đủ xếp 2 file 30s đầu!", 0
         
+    # Xáo trộn random trước để tạo sự đa dạng, sau đó mới xếp ưu tiên file dài
     valid_pool = [f for f in pool if f['duration_secs'] > 0]
+    random.shuffle(valid_pool)
+    valid_pool.sort(key=lambda x: x['duration_secs'], reverse=True)
     
-    # HÀM ƯU TIÊN: Ưu tiên file 20-30 phút (1200s - 1800s), sau đó đến file dài khác, cuối cùng mới đến file ngắn
-    def sort_priority(x):
-        dur = x['duration_secs']
-        if 1200 <= dur <= 1800:
-            return (2, dur) # Ưu tiên cao nhất
-        elif dur > 60:
-            return (1, dur) # Ưu tiên trung bình
-        else:
-            return (0, dur) # Ít ưu tiên (các file ngắn)
-
-    sorted_pool = sorted(valid_pool, key=sort_priority, reverse=True)
+    best_path = None
+    best_error = 999999
     
-    # Cấu trúc hàng đợi (Queue): (Tổng_hiện_tại, Tên_file_cuối, Danh_sách_file, Tổng_thời_lượng_file_ngắn)
-    # File ngắn được định nghĩa là từ 30s đến 60s
-    queue = deque([(start_sum, second_file['name'], [first_file, second_file], start_sum)])
+    start_time = time_module.time()
     
-    # Visited dict mapping (current_sum, last_file_name) -> min_short_sum (lưu lại tổng file ngắn nhỏ nhất để tối ưu)
-    visited = {(start_sum, second_file['name']): start_sum}
-    
-    while queue:
-        curr_sum, last_name, path, short_sum = queue.popleft()
+    def dfs(curr_sum, last_name, short_sum, path, usage_counts):
+        nonlocal best_path, best_error
         
-        for f in sorted_pool:
+        # Ngắt thuật toán nếu tìm kiếm quá 2 giây để tránh treo ứng dụng
+        if time_module.time() - start_time > 2.0:
+            return best_error == 0
+            
+        error = curr_sum - target_seconds
+        
+        # CHẤP NHẬN SAI SỐ +- 20 GIÂY
+        if -20 <= error <= 20:
+            if abs(error) < best_error:
+                best_error = abs(error)
+                best_path = list(path)
+            # Nếu vô tình khớp đúng 100% thì dừng luôn
+            if best_error == 0:
+                return True
+                
+        if curr_sum > target_seconds + 20:
+            return False
+            
+        # RÀNG BUỘC: Tổng file <= 60s không được quá 15 phút (900s)
+        if short_sum >= 900:
+            return False
+            
+        for f in valid_pool:
+            # RÀNG BUỘC: KHÔNG xếp 2 file giống hệt nhau đứng liền kề
             if f['name'] == last_name:
                 continue
                 
-            nxt_sum = curr_sum + f['duration_secs']
+            dur = f['duration_secs']
+            is_short = dur <= 60 
             
-            # Cắt nhánh: nếu tổng vượt quá yêu cầu thì bỏ qua luôn
-            if nxt_sum > target_seconds:
+            if is_short and short_sum + dur >= 900:
                 continue
                 
-            # Kiểm tra và tính toán tổng thời lượng các file ngắn (30s - 1m)
-            is_short_file = 30 <= f['duration_secs'] <= 60
-            nxt_short_sum = short_sum + f['duration_secs'] if is_short_file else short_sum
-            
-            # RÀNG BUỘC: Tổng thời lượng các file 30s đến 1 phút phải nhỏ hơn 15 phút (900s)
-            if nxt_short_sum >= 900:
+            # RÀNG BUỘC HẠN CHẾ TRÙNG LẶP TOÀN CỤC: 
+            # File ngắn chỉ được dùng max 3 lần, file dài max 2 lần
+            limit = 3 if is_short else 2
+            if usage_counts.get(f['name'], 0) >= limit:
                 continue
                 
-            if nxt_sum == target_seconds:
-                return path + [f], "Thành công"
+            # Duyệt nhánh tiếp theo
+            usage_counts[f['name']] = usage_counts.get(f['name'], 0) + 1
+            path.append(f)
+            
+            if dfs(curr_sum + dur, f['name'], short_sum + (dur if is_short else 0), path, usage_counts):
+                return True
                 
-            if nxt_sum < target_seconds:
-                state_key = (nxt_sum, f['name'])
-                # Cập nhật visited nếu chưa từng tới trạng thái này hoặc tìm được cách tới với ít file ngắn hơn
-                if state_key not in visited or nxt_short_sum < visited[state_key]:
-                    visited[state_key] = nxt_short_sum
-                    queue.append((nxt_sum, f['name'], path + [f], nxt_short_sum))
-                    
-    return None, "Không thể ghép chính xác thời lượng hoặc vi phạm giới hạn file quảng cáo ngắn. Hãy thử thêm file có thời lượng đa dạng hơn vào Excel mẫu!"
+            # Backtrack
+            path.pop()
+            usage_counts[f['name']] -= 1
+            
+        return False
 
+    initial_uses = {first_file['name']: 1}
+    initial_uses[second_file['name']] = initial_uses.get(second_file['name'], 0) + 1
+    
+    dfs(start_sum, second_file['name'], start_sum, [], initial_uses)
+    
+    if best_path is not None:
+        actual_sum = start_sum + sum(f['duration_secs'] for f in best_path)
+        sai_so = actual_sum - target_seconds
+        return [first_file, second_file] + best_path, "Thành công", sai_so
+    else:
+        err_msg = ("Không tìm được tổ hợp nào khớp trong khoảng ±20s mà vẫn đảm bảo 'Tổng file ngắn < 15p'. "
+                   "Hãy thêm nhiều file có thời lượng trung bình/dài vào file Excel mẫu để AI có nhiều lựa chọn hơn!")
+        return None, err_msg, 0
+
+
+# ==== GIAO DIỆN STREAMLIT ====
 st.set_page_config(page_title="App Lịch Chèn Sự Cố", layout="wide")
 st.title("Ứng dụng Lịch Chèn Sự Cố")
 st.header("CÁC DỮ LIỆU NHẬP VÀO")
@@ -135,7 +162,7 @@ else:
     active_tl = st.session_state['active_thoi_luong']
     
     st.write(f"**Giờ chèn sự cố đang chọn:** {timedelta_to_str(active_gio)}")
-    st.write(f"**Thời lượng chèn đang chọn:** {timedelta_to_str(active_tl)}")
+    st.write(f"**Thời lượng chèn yêu cầu:** {timedelta_to_str(active_tl)}")
     
     uploaded_file = st.file_uploader("Tải lên file Excel mẫu (.xlsx)", type=["xlsx"])
     if uploaded_file is not None:
@@ -170,27 +197,40 @@ else:
         
         if st.button("7. XUẤT FILE CHÈN", type="primary"):
             target_secs = int(active_tl.total_seconds())
-            with st.spinner("Đang tính toán thuật toán AI (Bao gồm ưu tiên ghép các file dài 20-30 phút)..."):
-                sequence, msg = find_sequence(file_pool, target_secs)
+            with st.spinner("Đang tính toán... (Ưu tiên File dài, không lặp, cho phép ±20s)"):
+                sequence, msg, sai_so = find_sequence(file_pool, target_secs)
+                
             if sequence is None:
                 st.error(msg)
             else:
-                st.success("Tuyệt vời! Đã tìm được tổ hợp file chèn khớp 100% thời gian!")
+                st.success("🎉 Tuyệt vời! Đã tìm được tổ hợp file chèn tối ưu nhất!")
+                
                 sheet["B2"] = datetime.now().strftime("%d/%m/%Y")
                 sheet["A6"] = f"{timedelta_to_str(active_gio)}"
-                sheet["D6"] = f"{timedelta_to_str(active_tl)}"
+                
+                # Cập nhật tổng thời lượng thực tế AI tính ra vào D6 (Có thể lệch +- 20s so với yêu cầu)
+                thuc_te_secs = target_secs + sai_so
+                sheet["D6"] = f"{timedelta_to_str(timedelta(seconds=thuc_te_secs))}"
+                
                 sheet.delete_rows(7, sheet.max_row)
                 for i, item in enumerate(sequence):
                     row_idx = 7 + i
                     sheet.cell(row=row_idx, column=3, value=item['name'])
                     sheet.cell(row=row_idx, column=4, value=item['duration_str'])
                     sheet.cell(row=row_idx, column=5, value=item['type'])
+                    
                 output = io.BytesIO()
                 wb.save(output)
                 output.seek(0)
+                
                 st.download_button(
                     label="⬇️ BẤM VÀO ĐÂY TẢI XUỐNG FILE CHÈN HOÀN CHỈNH",
                     data=output,
                     file_name=f"FILE_CHEN_XUAT_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
+                
+                # HIỂN THỊ CẢNH BÁO SAI SỐ TRỰC QUAN NGAY DƯỚI NÚT TẢI
+                if sai_so != 0:
+                    trang_thai = "THỪA" if sai_so > 0 else "THIẾU"
+                    st.warning(f"⚠️ **CẢNH BÁO SAI SỐ:** Tổ hợp chèn xuất ra bị **{trang_thai} {abs(sai_so)} giây** so với yêu cầu ban đầu do cơ chế làm tròn ±20s.")
