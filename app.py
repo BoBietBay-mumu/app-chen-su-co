@@ -8,21 +8,29 @@ import time as time_module
 
 def str_to_timedelta(time_str):
     time_str = str(time_str).strip()
-    try:
-        t = datetime.strptime(time_str, "%H:%M:%S")
-        return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
-    except:
-        pass
+    
+    # 1. CÁCH MỚI: Xử lý định dạng truyền hình (Giờ có thể >= 24)
+    # Tự động cắt chuỗi theo dấu ":" để không bị giới hạn bởi chuẩn 24h của Python
+    parts = time_str.split(':')
+    if len(parts) == 3:
+        try:
+            return timedelta(hours=int(parts[0]), minutes=int(parts[1]), seconds=int(parts[2]))
+        except:
+            pass
+    elif len(parts) == 2:
+        try:
+            return timedelta(minutes=int(parts[0]), seconds=int(parts[1]))
+        except:
+            pass
+
+    # 2. Xử lý các định dạng phức tạp khác của Excel (Ngày tháng kèm giờ)
     try:
         t = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
     except:
         pass
-    try:
-        t = datetime.strptime(time_str, "%M:%S")
-        return timedelta(minutes=t.minute, seconds=t.second)
-    except:
-        return timedelta(seconds=0)
+        
+    return timedelta(seconds=0)
 
 def timedelta_to_str(td):
     total_seconds = int(td.total_seconds())
@@ -239,16 +247,11 @@ else:
             else:
                 st.success("🎉 Tuyệt vời! Đã xuất lịch thành công dựa trên cấu hình chọn lọc!")
                 
-                # --- SỬA LỖI ĐỊNH DẠNG TẠI ĐÂY ---
-                # 1. Định dạng Ngày tháng chuẩn YYYY-MM-DD
                 sheet["B2"] = datetime.now().strftime("%Y-%m-%d")
-                
-                # 2. Thêm đuôi Frame (:00) cho thời gian phát và tổng thời lượng
                 sheet["A6"] = f"{timedelta_to_str(active_gio)}:00"
                 
                 thuc_te_secs = target_secs + sai_so
                 sheet["D6"] = f"{timedelta_to_str(timedelta(seconds=thuc_te_secs))}:00"
-                # ---------------------------------
                 
                 sheet.delete_rows(7, sheet.max_row)
                 for i, item in enumerate(sequence):
