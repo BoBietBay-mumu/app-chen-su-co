@@ -79,7 +79,7 @@ col1, col2, col3 = st.columns(3)
 with col1:
     gio_input_cg = st.text_input("1. Giờ CG Phim hiện tại", "12:00:00")
 with col2:
-    gio_mat_tin_hieu = st.text_input("2. Giờ CG Phim hiện tại", "13:30:00")
+    gio_mat_tin_hieu = st.text_input("2. Giờ mất tín hiệu", "13:30:00")
 with col3:
     gio_input_next = st.text_input("3. Giờ CG phim tiếp theo", "14:00:00")
 
