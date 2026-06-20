@@ -8,9 +8,15 @@ import time
 
 # ================= CÁC HÀM XỬ LÝ THỜI GIAN =================
 def str_to_timedelta(time_str):
-    """Chuyển đổi chuỗi HH:MM:SS sang timedelta"""
+    """Chuyển đổi chuỗi HH:MM:SS hoặc HH:MM:SS:FF sang timedelta"""
     try:
-        t = datetime.strptime(time_str.strip(), "%H:%M:%S")
+        # Ép kiểu về chuỗi và xoá khoảng trắng thừa
+        s = str(time_str).strip()
+        # Nếu chuỗi dài hơn 8 ký tự (ví dụ: 00:03:00:00), chỉ lấy 8 ký tự đầu tiên
+        if len(s) > 8:
+            s = s[:8]
+            
+        t = datetime.strptime(s, "%H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
     except:
         return timedelta(seconds=0)
