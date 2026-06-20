@@ -8,14 +8,12 @@ import time
 
 # ================= CÁC HÀM XỬ LÝ THỜI GIAN =================
 def str_to_timedelta(time_str):
-    """Chuyển đổi chuỗi HH:MM:SS hoặc HH:MM:SS:FF sang timedelta"""
+    """Chuyển đổi chuỗi HH:MM:SS sang timedelta"""
     try:
-        # Ép kiểu về chuỗi và xoá khoảng trắng thừa
+        # Ép kiểu về chuỗi, cắt khoảng trắng và chỉ lấy tối đa 8 ký tự đầu (HH:MM:SS) để tránh lỗi đuôi frame
         s = str(time_str).strip()
-        # Nếu chuỗi dài hơn 8 ký tự (ví dụ: 00:03:00:00), chỉ lấy 8 ký tự đầu tiên
         if len(s) > 8:
             s = s[:8]
-            
         t = datetime.strptime(s, "%H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
     except:
@@ -97,9 +95,6 @@ td_next = str_to_timedelta(gio_input_next)
 # Tabs Màn INPUT và Màn OUTPUT
 tab1, tab2 = st.tabs(["I. MÀN INPUT", "II. MÀN OUTPUT"])
 
-gio_chen_final = ""
-thoi_luong_final = ""
-
 with tab1:
     st.subheader("Cách tính cho Màn INPUT")
     diff = td_mat - td_cg
@@ -161,11 +156,15 @@ else:
             file_dur = sheet.cell(row=row, column=4).value
             file_type = sheet.cell(row=row, column=5).value
             
-            if file_name and file_dur:
-                if isinstance(file_dur, str):
-                    dur_td = str_to_timedelta(file_dur)
+            if file_name and file_dur is not None:
+                # --- KIỂM TRA ĐỊNH DẠNG AN TOÀN TUYỆT ĐỐI ---
+                if hasattr(file_dur, 'hour') and hasattr(file_dur, 'minute'):
+                    # Nếu là định dạng thời gian (time) của Excel
+                    dur_td = timedelta(hours=file_dur.hour, minutes=file_dur.minute, seconds=getattr(file_dur, 'second', 0))
                 else:
-                    dur_td = timedelta(hours=file_dur.hour, minutes=file_dur.minute, seconds=file_dur.second)
+                    # Các trường hợp còn lại (int, float, string), ép về chuỗi rồi cắt lấy HH:MM:SS
+                    dur_td = str_to_timedelta(str(file_dur))
+                # ---------------------------------------------
                 
                 sec = int(dur_td.total_seconds())
                 if sec > 0:
@@ -176,7 +175,7 @@ else:
                         'type': file_type if file_type else "CM"
                     })
         
-        st.info(f"Đã đọc được {len(file_pool)} file chèn từ Excel mẫu để làm kho dữ liệu.")
+        st.info(f"Đã đọc được {len(file_pool)} file chèn hợp lệ từ Excel mẫu để làm kho dữ liệu.")
         
         # --- THÊM TUỲ CHỌN ĐIỀU KIỆN TẠI ĐÂY ---
         st.markdown("### ⚙️ TUỲ CHỈNH ĐIỀU KIỆN GHÉP FILE")
