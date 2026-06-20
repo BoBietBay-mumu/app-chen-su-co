@@ -7,9 +7,20 @@ import random
 import time as time_module
 
 def str_to_timedelta(time_str):
+    time_str = str(time_str).strip()
     try:
-        t = datetime.strptime(str(time_str).strip(), "%H:%M:%S")
+        t = datetime.strptime(time_str, "%H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+    except:
+        pass
+    try:
+        t = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
+        return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
+    except:
+        pass
+    try:
+        t = datetime.strptime(time_str, "%M:%S")
+        return timedelta(minutes=t.minute, seconds=t.second)
     except:
         return timedelta(seconds=0)
 
@@ -22,22 +33,18 @@ def timedelta_to_str(td):
 def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit, bypass_error_limit):
     valid_pool = [f for f in pool if f['duration_secs'] > 0]
     if not valid_pool:
-        return None, "Kho dữ liệu Excel của bạn đang trống hoặc không đọc được thời lượng!", 0
+        return None, "❌ Kho dữ liệu rỗng! Không tìm thấy file hợp lệ nào.", 0
         
     best_path = None
     best_error = 999999
     best_has_priority = False
     
     start_time = time_module.time()
-    
-    # Nếu người dùng chọn bỏ qua giới hạn sai số, AI sẽ cho phép thời gian lố lên tới 1 tiếng để tìm nghiệm tốt nhất
     upper_bound_buffer = 3600 if bypass_error_limit else max_sai_so
     upper_bound = target_seconds + upper_bound_buffer
     
-    # THUẬT TOÁN MONTE CARLO (Hỗ trợ tính năng Chống Bế Tắc / Bỏ qua điều kiện)
     while time_module.time() - start_time < 2.5:
         force_short_count = random.choice([0, 1, 2])
-        
         curr_sum = 0
         short_sum = 0
         path = []
@@ -49,30 +56,23 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
         while curr_sum < upper_bound:
             candidates = []
             for f in shuffled_pool:
-                # 1. Chống lặp file liền kề
                 if path and f['name'] == path[-1]['name']:
                     continue
-                    
                 dur = f['duration_secs']
                 is_short = dur <= 60
                 
-                # 2. Giới hạn số lần dùng
                 limit = max_lap if is_short else 2
                 if usage.get(f['name'], 0) >= limit:
                     continue
                     
-                # 3. Luật file ngắn < 15p (Nếu KHÔNG tích chọn bỏ qua thì mới áp dụng)
                 if not bypass_short_limit and is_short and short_sum + dur >= 900:
                     continue
-                    
                 candidates.append(f)
                 
             if not candidates:
                 break
                 
             chosen = None
-            
-            # Ép lấy file ngắn đầu tiên (ưu tiên mềm)
             if len(path) < force_short_count:
                 shorts = [c for c in candidates if c['duration_secs'] <= 60]
                 if shorts:
@@ -87,22 +87,17 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
                 else:
                     break
                     
-            # Ghi nhận file
             path.append(chosen)
             curr_sum += chosen['duration_secs']
             if chosen['duration_secs'] <= 60:
                 short_sum += chosen['duration_secs']
             usage[chosen['name']] = usage.get(chosen['name'], 0) + 1
             
-            # ĐÁNH GIÁ SAI SỐ
             error = curr_sum - target_seconds
-            
-            # Điều kiện chấp nhận nghiệm: Hoặc nằm trong khoảng slider, hoặc người dùng đã bật 'Bỏ qua giới hạn sai số'
             is_acceptable_error = bypass_error_limit or (-max_sai_so <= error <= max_sai_so)
             
             if is_acceptable_error:
                 abs_err = abs(error)
-                
                 start_short = 0
                 for p in path:
                     if p['duration_secs'] <= 60:
@@ -111,7 +106,6 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
                         break
                 is_priority = 1 <= start_short <= 2
                 
-                # Lưu lại phương án tốt nhất tuyệt đối
                 if abs_err < best_error:
                     best_error = abs_err
                     best_path = list(path)
@@ -130,7 +124,7 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
         return best_path, "Thành công", sai_so
     else:
         err_msg = (f"❌ ỨNG DỤNG TỪ CHỐI TẠO FILE do các điều kiện cài đặt không thể thỏa mãn về mặt toán học.\n\n"
-                   f"👉 **MẸO XỬ LÝ NHANH:** Vui lòng kéo xuống mục bên dưới và tích chọn **'Bỏ qua giới hạn...'** để ép hệ thống tự động xuất file bằng mọi giá!")
+                   f"👉 **MẸO XỬ LÝ NHANH:** Vui lòng tích chọn **'Bỏ qua giới hạn...'** để ép hệ thống tự động xuất file bằng mọi giá!")
         return None, err_msg, 0
 
 
@@ -191,13 +185,12 @@ else:
     with col_c2:
         user_max_lap = st.slider("Số lần lặp tối đa của 1 file ngắn", min_value=2, max_value=10, value=3, step=1)
         
-    # --- KHU VỰC CỨU CÁNH KHI BỊ LỖI ---
-    with st.expander("🛠️ TÙY CHỌN BỎ QUA ĐIỀU KIỆN (Tích chọn ô này khi ứng dụng báo lỗi từ chối tạo file)", expanded=True):
+    with st.expander("🛠️ TÙY CHỌN BỎ QUA ĐIỀU KIỆN", expanded=True):
         col_b1, col_b2 = st.columns(2)
         with col_b1:
-            bypass_short = st.checkbox("Bỏ qua giới hạn 15 phút cho file ngắn (Cho phép chèn nhiều quảng cáo hơn)", value=False)
+            bypass_short = st.checkbox("Bỏ qua giới hạn 15 phút cho file ngắn", value=False)
         with col_b2:
-            bypass_error = st.checkbox("Bỏ qua giới hạn sai số (Ép ứng dụng tạo file bằng mọi giá với phương án tối ưu nhất)", value=False)
+            bypass_error = st.checkbox("Bỏ qua giới hạn sai số", value=False)
     
     uploaded_file = st.file_uploader("Tải lên file Excel mẫu (.xlsx)", type=["xlsx"])
     if uploaded_file is not None:
@@ -208,6 +201,7 @@ else:
             file_name = sheet.cell(row=row, column=3).value
             file_dur = sheet.cell(row=row, column=4).value
             file_type = sheet.cell(row=row, column=5).value
+            
             if file_name and file_dur is not None:
                 try:
                     if isinstance(file_dur, str):
@@ -216,9 +210,14 @@ else:
                         dur_td = file_dur
                     elif isinstance(file_dur, time):
                         dur_td = timedelta(hours=file_dur.hour, minutes=file_dur.minute, seconds=file_dur.second)
+                    elif isinstance(file_dur, datetime):
+                        dur_td = timedelta(hours=file_dur.hour, minutes=file_dur.minute, seconds=file_dur.second)
+                    elif isinstance(file_dur, (int, float)): 
+                        total_seconds = int(file_dur * 86400)
+                        dur_td = timedelta(seconds=total_seconds)
                     else:
                         dur_td = str_to_timedelta(str(file_dur))
-                except:
+                except Exception:
                     continue
                     
                 sec = int(dur_td.total_seconds())
@@ -240,11 +239,16 @@ else:
             else:
                 st.success("🎉 Tuyệt vời! Đã xuất lịch thành công dựa trên cấu hình chọn lọc!")
                 
-                sheet["B2"] = datetime.now().strftime("%d/%m/%Y")
-                sheet["A6"] = f"{timedelta_to_str(active_gio)}"
+                # --- SỬA LỖI ĐỊNH DẠNG TẠI ĐÂY ---
+                # 1. Định dạng Ngày tháng chuẩn YYYY-MM-DD
+                sheet["B2"] = datetime.now().strftime("%Y-%m-%d")
+                
+                # 2. Thêm đuôi Frame (:00) cho thời gian phát và tổng thời lượng
+                sheet["A6"] = f"{timedelta_to_str(active_gio)}:00"
                 
                 thuc_te_secs = target_secs + sai_so
-                sheet["D6"] = f"{timedelta_to_str(timedelta(seconds=thuc_te_secs))}"
+                sheet["D6"] = f"{timedelta_to_str(timedelta(seconds=thuc_te_secs))}:00"
+                # ---------------------------------
                 
                 sheet.delete_rows(7, sheet.max_row)
                 for i, item in enumerate(sequence):
@@ -264,7 +268,6 @@ else:
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
-                # Hiển thị thông báo trạng thái bỏ qua luật trực quan để người dùng kiểm soát lịch phát sóng
                 if bypass_short or bypass_error:
                     st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép (Đã bật: "
                             f"{'Bỏ qua giới hạn 15p file ngắn' if bypass_short else ''} "
