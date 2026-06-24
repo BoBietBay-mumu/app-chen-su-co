@@ -8,9 +8,6 @@ import time as time_module
 
 def str_to_timedelta(time_str):
     time_str = str(time_str).strip()
-    
-    # 1. CÁCH MỚI: Xử lý định dạng truyền hình (Giờ có thể >= 24)
-    # Tự động cắt chuỗi theo dấu ":" để không bị giới hạn bởi chuẩn 24h của Python
     parts = time_str.split(':')
     if len(parts) == 3:
         try:
@@ -22,14 +19,11 @@ def str_to_timedelta(time_str):
             return timedelta(minutes=int(parts[0]), seconds=int(parts[1]))
         except:
             pass
-
-    # 2. Xử lý các định dạng phức tạp khác của Excel (Ngày tháng kèm giờ)
     try:
         t = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
     except:
         pass
-        
     return timedelta(seconds=0)
 
 def timedelta_to_str(td):
@@ -152,19 +146,37 @@ td_next = str_to_timedelta(gio_input_next)
 tab1, tab2 = st.tabs(["I. MÀN INPUT", "II. MÀN OUTPUT"])
 
 with tab1:
-    diff = td_mat - td_cg
-    if diff >= timedelta(hours=1):
+    diff_mat_cg = td_mat - td_cg
+    diff_next_cg = td_next - td_cg
+    
+    # KIỂM TRA TÌNH HUỐNG XUNG ĐỘT LOGIC DỮ LIỆU NHẬP VÀO
+    if diff_mat_cg >= timedelta(hours=1) and td_next <= td_mat:
+        # Hiện cảnh báo màu đỏ yêu cầu người dùng sửa lại giờ CG phim tiếp theo
+        st.error("⚠️ **CẢNH BÁO:** Hãy nhập giờ CG phim tiếp theo > Giờ mất tín hiệu.")
+        
+        # Công thức tính sửa đổi khi xảy ra tình huống lỗi dữ liệu đầu vào
         gio_chen = td_mat
-        thoi_luong = td_next - td_mat
+        thoi_luong = td_next - td_mat if td_next > td_mat else timedelta(seconds=0)
     else:
-        gio_chen = td_cg
-        thoi_luong = td_next - td_cg
+        # Luồng chạy tính toán bình thường như cũ
+        if diff_mat_cg >= timedelta(hours=1):
+            gio_chen = td_mat
+            thoi_luong = td_next - td_mat
+        else:
+            gio_chen = td_cg
+            thoi_luong = td_next - td_cg
+            
     st.success(f"4. GIỜ CHÈN SỰ CỐ: **{timedelta_to_str(gio_chen)}**")
     st.success(f"5. THỜI LƯỢNG CHÈN: **{timedelta_to_str(thoi_luong)}**")
-    if st.button("Áp dụng dữ liệu từ Màn INPUT cho File"):
-        st.session_state['active_gio_chen'] = gio_chen
-        st.session_state['active_thoi_luong'] = thoi_luong
-        st.success("Đã chọn dữ liệu Màn INPUT!")
+    
+    # Chỉ cho phép bấm áp dụng khi thời lượng hợp lệ lớn hơn 0
+    if thoi_luong.total_seconds() > 0:
+        if st.button("Áp dụng dữ liệu từ Màn INPUT cho File"):
+            st.session_state['active_gio_chen'] = gio_chen
+            st.session_state['active_thoi_luong'] = thoi_luong
+            st.success("Đã chọn dữ liệu Màn INPUT!")
+    else:
+        st.warning("Thời lượng chèn bằng 0, vui lòng điều chỉnh lại mục '3. Giờ CG phim tiếp theo' lớn hơn Giờ mất tín hiệu để kích hoạt nút Áp dụng.")
 
 with tab2:
     gio_chen_out = td_mat + timedelta(minutes=5) - timedelta(hours=1)
@@ -265,7 +277,7 @@ else:
                 output.seek(0)
                 
                 st.download_button(
-                    label="⬇️ BẤM VÀO ĐÂY TẢI XUỐNG FILE CHÈN HOÀN CHỈNH",
+                    label="⬇️ BẤM VÀO ĐÂY TẢI XUỐNG FILE CHèn HOÀN CHỈNH",
                     data=output,
                     file_name=f"FILE_CHEN_XUAT_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
