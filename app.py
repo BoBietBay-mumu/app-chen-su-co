@@ -149,7 +149,7 @@ tab1, tab2 = st.tabs(["I. MÀN INPUT", "II. MÀN OUTPUT"])
 with tab1:
     diff_mat_cg = td_mat - td_cg
     
-    # ĐIỀU KIỆN KIỂM TRA MỚI: Nếu Giờ mất tín hiệu LỚN HƠN HOẶC BẰNG Giờ CG phim tiếp theo
+    # ĐIỀU KIỆN KIỂM TRA MỚI: Nếu Giờ mất tín hiệu >= Giờ CG phim tiếp theo
     if td_mat >= td_next:
         st.error("⚠️ **CẢNH BÁO:** Hãy nhập giờ CG phim tiếp theo 2 > Giờ mất tín hiệu.")
         
@@ -157,15 +157,17 @@ with tab1:
             gio_input_next_2 = st.text_input("3b. Giờ CG phim tiếp theo 2", "15:00:00")
         td_next_2 = str_to_timedelta(gio_input_next_2)
         
-        # Áp dụng công thức tính toán chia 2 trường hợp cho Giờ CG tiếp theo 2
+        # Áp dụng công thức tính CHÍNH XÁC theo yêu cầu mới
         if diff_mat_cg >= timedelta(hours=1):
+            # Trường hợp 1: Chênh lệch >= 1h
             gio_chen = td_mat
             thoi_luong = td_next_2 - td_mat if td_next_2 > td_mat else timedelta(seconds=0)
         else:
-            gio_chen = td_cg
-            thoi_luong = td_next_2 - td_cg if td_next_2 > td_cg else timedelta(seconds=0)
+            # Trường hợp 2: Chênh lệch < 1h
+            gio_chen = td_next
+            thoi_luong = td_next_2 - td_next if td_next_2 > td_next else timedelta(seconds=0)
     else:
-        # Nếu điều kiện bình thường -> Tính theo công thức cũ
+        # Nếu điều kiện bình thường (Giờ mất tín hiệu < Giờ CG phim tiếp theo)
         with col4:
             st.write("") 
             
