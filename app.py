@@ -134,7 +134,8 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
 st.set_page_config(page_title="App Lịch Chèn Sự Cố", layout="wide")
 st.title("Ứng dụng Lịch Chèn Sự Cố")
 st.header("CÁC DỮ LIỆU NHẬP VÀO")
-col1, col2, col3 = st.columns(3)
+
+col1, col2, col3, col4 = st.columns(4)
 with col1: gio_input_cg = st.text_input("1. Giờ CG Phim hiện tại", "12:00:00")
 with col2: gio_mat_tin_hieu = st.text_input("2. Giờ mất tín hiệu", "13:30:00")
 with col3: gio_input_next = st.text_input("3. Giờ CG phim tiếp theo", "14:00:00")
@@ -147,18 +148,27 @@ tab1, tab2 = st.tabs(["I. MÀN INPUT", "II. MÀN OUTPUT"])
 
 with tab1:
     diff_mat_cg = td_mat - td_cg
-    diff_next_cg = td_next - td_cg
     
-    # KIỂM TRA TÌNH HUỐNG XUNG ĐỘT LOGIC DỮ LIỆU NHẬP VÀO
-    if diff_mat_cg >= timedelta(hours=1) and td_next <= td_mat:
-        # Hiện cảnh báo màu đỏ yêu cầu người dùng sửa lại giờ CG phim tiếp theo
-        st.error("⚠️ **CẢNH BÁO:** Hãy nhập giờ CG phim tiếp theo > Giờ mất tín hiệu.")
+    # ĐIỀU KIỆN KIỂM TRA MỚI: Nếu Giờ mất tín hiệu LỚN HƠN HOẶC BẰNG Giờ CG phim tiếp theo
+    if td_mat >= td_next:
+        st.error("⚠️ **CẢNH BÁO:** Hãy nhập giờ CG phim tiếp theo 2 > Giờ mất tín hiệu.")
         
-        # Công thức tính sửa đổi khi xảy ra tình huống lỗi dữ liệu đầu vào
-        gio_chen = td_mat
-        thoi_luong = td_next - td_mat if td_next > td_mat else timedelta(seconds=0)
+        with col4:
+            gio_input_next_2 = st.text_input("3b. Giờ CG phim tiếp theo 2", "15:00:00")
+        td_next_2 = str_to_timedelta(gio_input_next_2)
+        
+        # Áp dụng công thức tính toán chia 2 trường hợp cho Giờ CG tiếp theo 2
+        if diff_mat_cg >= timedelta(hours=1):
+            gio_chen = td_mat
+            thoi_luong = td_next_2 - td_mat if td_next_2 > td_mat else timedelta(seconds=0)
+        else:
+            gio_chen = td_cg
+            thoi_luong = td_next_2 - td_cg if td_next_2 > td_cg else timedelta(seconds=0)
     else:
-        # Luồng chạy tính toán bình thường như cũ
+        # Nếu điều kiện bình thường -> Tính theo công thức cũ
+        with col4:
+            st.write("") 
+            
         if diff_mat_cg >= timedelta(hours=1):
             gio_chen = td_mat
             thoi_luong = td_next - td_mat
@@ -169,14 +179,13 @@ with tab1:
     st.success(f"4. GIỜ CHÈN SỰ CỐ: **{timedelta_to_str(gio_chen)}**")
     st.success(f"5. THỜI LƯỢNG CHÈN: **{timedelta_to_str(thoi_luong)}**")
     
-    # Chỉ cho phép bấm áp dụng khi thời lượng hợp lệ lớn hơn 0
     if thoi_luong.total_seconds() > 0:
         if st.button("Áp dụng dữ liệu từ Màn INPUT cho File"):
             st.session_state['active_gio_chen'] = gio_chen
             st.session_state['active_thoi_luong'] = thoi_luong
             st.success("Đã chọn dữ liệu Màn INPUT!")
     else:
-        st.warning("Thời lượng chèn bằng 0, vui lòng điều chỉnh lại mục '3. Giờ CG phim tiếp theo' lớn hơn Giờ mất tín hiệu để kích hoạt nút Áp dụng.")
+        st.warning("Thời lượng chèn bằng 0, vui lòng kiểm tra hoặc điều chỉnh lại giờ tiếp theo cho hợp lý.")
 
 with tab2:
     gio_chen_out = td_mat + timedelta(minutes=5) - timedelta(hours=1)
@@ -277,17 +286,14 @@ else:
                 output.seek(0)
                 
                 st.download_button(
-                    label="⬇️ BẤM VÀO ĐÂY TẢI XUỐNG FILE CHèn HOÀN CHỈNH",
+                    label="⬇️ BẤM VÀO ĐÂY TẢI XUỐNG FILE CHÈN HOÀN CHỈNH",
                     data=output,
                     file_name=f"FILE_CHEN_XUAT_{datetime.now().strftime('%Y%m%d_%H%M')}.xlsx",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
                 
                 if bypass_short or bypass_error:
-                    st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép (Đã bật: "
-                            f"{'Bỏ qua giới hạn 15p file ngắn' if bypass_short else ''} "
-                            f"{'| ' if (bypass_short and bypass_error) else ''}"
-                            f"{'Bỏ qua giới hạn sai số' if bypass_error else ''}).")
+                    st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép.")
                 
                 if sai_so != 0:
                     trang_thai = "THỪA" if sai_so > 0 else "THIẾU"
