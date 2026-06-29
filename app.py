@@ -60,10 +60,18 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
             for f in shuffled_pool:
                 if path and f['name'] == path[-1]['name']:
                     continue
+                
                 dur = f['duration_secs']
                 is_short = dur <= 60
                 
-                limit = max_lap if is_short else 2
+                # --- ĐIỀU KIỆN MỚI: File > 5 phút (300s) tuyệt đối không lặp lại ---
+                if is_short:
+                    limit = max_lap
+                elif dur > 300:
+                    limit = 1
+                else:
+                    limit = 2
+                    
                 if usage.get(f['name'], 0) >= limit:
                     continue
                     
@@ -295,7 +303,10 @@ else:
                 )
                 
                 if bypass_short or bypass_error:
-                    st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép.")
+                    st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép (Đã bật: "
+                            f"{'Bỏ qua giới hạn 15p file ngắn' if bypass_short else ''} "
+                            f"{'| ' if (bypass_short and bypass_error) else ''}"
+                            f"{'Bỏ qua giới hạn sai số' if bypass_error else ''}).")
                 
                 if sai_so != 0:
                     trang_thai = "THỪA" if sai_so > 0 else "THIẾU"
