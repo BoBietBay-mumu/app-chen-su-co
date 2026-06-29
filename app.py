@@ -8,12 +8,8 @@ import time as time_module
 
 def str_to_timedelta(time_str):
     time_str = str(time_str).strip()
-    
-    # Quét sạch dấu phẩy/chấm của phần Frame (VD: ,00 hoặc .00) chuyển thành dấu hai chấm
-    time_str = time_str.replace(',', ':').replace('.', ':')
     parts = time_str.split(':')
-    
-    if len(parts) >= 3:
+    if len(parts) == 3:
         try:
             return timedelta(hours=int(parts[0]), minutes=int(parts[1]), seconds=int(parts[2]))
         except:
@@ -23,13 +19,11 @@ def str_to_timedelta(time_str):
             return timedelta(minutes=int(parts[0]), seconds=int(parts[1]))
         except:
             pass
-            
     try:
         t = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
     except:
         pass
-        
     return timedelta(seconds=0)
 
 def timedelta_to_str(td):
@@ -48,6 +42,8 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
     best_has_priority = False
     
     start_time = time_module.time()
+    upper_bound_buffer = 3600 if bypass_error_limit else max_sai_so
+    upper_bound = target_seconds + upper_bound_buffer
     
     while time_module.time() - start_time < 2.5:
         force_short_count = random.choice([0, 1, 2])
@@ -59,15 +55,16 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
         shuffled_pool = list(valid_pool)
         random.shuffle(shuffled_pool)
         
-        while True:
+        while curr_sum < upper_bound:
             candidates = []
             for f in shuffled_pool:
                 if path and f['name'] == path[-1]['name']:
                     continue
+                
                 dur = f['duration_secs']
                 is_short = dur <= 60
                 
-                # File > 5 phút (300s) tuyệt đối không lặp lại
+                # --- ĐIỀU KIỆN MỚI: File > 5 phút (300s) tuyệt đối không lặp lại ---
                 if is_short:
                     limit = max_lap
                 elif dur > 300:
@@ -92,18 +89,13 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
                     chosen = random.choice(shorts)
                     
             if not chosen:
-                fits_well = [c for c in candidates if curr_sum + c['duration_secs'] <= target_seconds + max_sai_so]
-                
-                if fits_well:
-                    fits_well.sort(key=lambda x: x['duration_secs'], reverse=True)
-                    top_k = min(3, len(fits_well))
-                    chosen = random.choice(fits_well[:top_k])
+                valid_fits = [c for c in candidates if curr_sum + c['duration_secs'] <= upper_bound]
+                if valid_fits:
+                    valid_fits.sort(key=lambda x: x['duration_secs'], reverse=True)
+                    top_k = min(3, len(valid_fits))
+                    chosen = random.choice(valid_fits[:top_k])
                 else:
-                    if bypass_error_limit and candidates:
-                        candidates.sort(key=lambda x: x['duration_secs'])
-                        chosen = candidates[0]
-                    else:
-                        break 
+                    break
                     
             path.append(chosen)
             curr_sum += chosen['duration_secs']
@@ -133,16 +125,16 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
                         best_path = list(path)
                         best_has_priority = True
                         
-            if curr_sum >= target_seconds:
-                break
+                if error >= 0:
+                    break
 
     if best_path is not None:
         actual_sum = sum(f['duration_secs'] for f in best_path)
         sai_so = actual_sum - target_seconds
         return best_path, "Thành công", sai_so
     else:
-        err_msg = (f"❌ ỨNG DỤNG TỪ CHỐI TẠO FILE do các điều kiện cài đặt không thể thỏa mãn.\n\n"
-                   f"👉 **MẸO XỬ LÝ NHANH:** Vui lòng tích chọn **'Bỏ qua giới hạn sai số'** để ép hệ thống tự động xuất file bằng mọi giá!")
+        err_msg = (f"❌ ỨNG DỤNG TỪ CHỐI TẠO FILE do các điều kiện cài đặt không thể thỏa mãn về mặt toán học.\n\n"
+                   f"👉 **MẸO XỬ LÝ NHANH:** Vui lòng tích chọn **'Bỏ qua giới hạn...'** để ép hệ thống tự động xuất file bằng mọi giá!")
         return None, err_msg, 0
 
 
@@ -165,6 +157,7 @@ tab1, tab2 = st.tabs(["I. MÀN INPUT", "II. MÀN OUTPUT"])
 with tab1:
     diff_mat_cg = td_mat - td_cg
     
+    # ĐIỀU KIỆN KIỂM TRA MỚI: Nếu Giờ mất tín hiệu >= Giờ CG phim tiếp theo
     if td_mat >= td_next:
         st.error("⚠️ **CẢNH BÁO:** Hãy nhập giờ CG phim tiếp theo 2 > Giờ mất tín hiệu.")
         
@@ -172,13 +165,17 @@ with tab1:
             gio_input_next_2 = st.text_input("3b. Giờ CG phim tiếp theo 2", "15:00:00")
         td_next_2 = str_to_timedelta(gio_input_next_2)
         
+        # Áp dụng công thức tính CHÍNH XÁC theo yêu cầu mới
         if diff_mat_cg >= timedelta(hours=1):
+            # Trường hợp 1: Chênh lệch >= 1h
             gio_chen = td_mat
             thoi_luong = td_next_2 - td_mat if td_next_2 > td_mat else timedelta(seconds=0)
         else:
+            # Trường hợp 2: Chênh lệch < 1h
             gio_chen = td_next
             thoi_luong = td_next_2 - td_next if td_next_2 > td_next else timedelta(seconds=0)
     else:
+        # Nếu điều kiện bình thường (Giờ mất tín hiệu < Giờ CG phim tiếp theo)
         with col4:
             st.write("") 
             
@@ -306,7 +303,10 @@ else:
                 )
                 
                 if bypass_short or bypass_error:
-                    st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép.")
+                    st.info(f"💡 **Thông tin hệ thống:** File này được tạo ra trong chế độ cưỡng ép (Đã bật: "
+                            f"{'Bỏ qua giới hạn 15p file ngắn' if bypass_short else ''} "
+                            f"{'| ' if (bypass_short and bypass_error) else ''}"
+                            f"{'Bỏ qua giới hạn sai số' if bypass_error else ''}).")
                 
                 if sai_so != 0:
                     trang_thai = "THỪA" if sai_so > 0 else "THIẾU"
