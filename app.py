@@ -8,8 +8,12 @@ import time as time_module
 
 def str_to_timedelta(time_str):
     time_str = str(time_str).strip()
+    
+    # Quét sạch dấu phẩy/chấm của phần Frame (VD: ,00 hoặc .00) chuyển thành dấu hai chấm
+    time_str = time_str.replace(',', ':').replace('.', ':')
     parts = time_str.split(':')
-    if len(parts) == 3:
+    
+    if len(parts) >= 3:
         try:
             return timedelta(hours=int(parts[0]), minutes=int(parts[1]), seconds=int(parts[2]))
         except:
@@ -19,11 +23,13 @@ def str_to_timedelta(time_str):
             return timedelta(minutes=int(parts[0]), seconds=int(parts[1]))
         except:
             pass
+            
     try:
         t = datetime.strptime(time_str, "%Y-%m-%d %H:%M:%S")
         return timedelta(hours=t.hour, minutes=t.minute, seconds=t.second)
     except:
         pass
+        
     return timedelta(seconds=0)
 
 def timedelta_to_str(td):
@@ -61,7 +67,7 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
                 dur = f['duration_secs']
                 is_short = dur <= 60
                 
-                # Điều kiện: File > 5 phút (300s) tuyệt đối không lặp lại
+                # File > 5 phút (300s) tuyệt đối không lặp lại
                 if is_short:
                     limit = max_lap
                 elif dur > 300:
@@ -135,8 +141,8 @@ def find_sequence(pool, target_seconds, max_sai_so, max_lap, bypass_short_limit,
         sai_so = actual_sum - target_seconds
         return best_path, "Thành công", sai_so
     else:
-        err_msg = (f"❌ ỨNG DỤNG TỪ CHỐI TẠO FILE do các điều kiện cài đặt không thể thỏa mãn về mặt toán học.\n\n"
-                   f"👉 **MẸO XỬ LÝ NHANH:** Vui lòng tích chọn **'Bỏ qua giới hạn...'** để ép hệ thống tự động xuất file bằng mọi giá!")
+        err_msg = (f"❌ ỨNG DỤNG TỪ CHỐI TẠO FILE do các điều kiện cài đặt không thể thỏa mãn.\n\n"
+                   f"👉 **MẸO XỬ LÝ NHANH:** Vui lòng tích chọn **'Bỏ qua giới hạn sai số'** để ép hệ thống tự động xuất file bằng mọi giá!")
         return None, err_msg, 0
 
 
